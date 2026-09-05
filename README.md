@@ -1,10 +1,8 @@
-# Basic-exoplanet-detection-
-
-Basic exoplanet detection via light curves 
+# Basic exoplanet detection via light curves 
 
 Input files 
 Input a file containing a photometric time-series in the format of time (in days), flux, and flux error as 3 separate columns. 
-
+The flux and flux error can be in arbitrary units. 
 
 Results 
 Running the code gives 
