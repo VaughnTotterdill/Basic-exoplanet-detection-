@@ -6,5 +6,5 @@ The flux and flux error can be in arbitrary units.
 Results: Running the code gives 
 
 
-Explanation of methods used 
+Explanation of methods used: 
 
