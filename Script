@@ -1,0 +1,311 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+#open and load file
+
+data = np.loadtxt("input_file.txt")
+time_array_days = data[:, 0] #units of days 
+flux = data[:, 1]
+flux_error = data[:, 2]
+
+
+#calculate terms before inputting into function 
+
+#calculate w_i    -    w_i = 1 / sigma i ^2 
+
+w_i = 1 / (flux_error**2) 
+
+# calculate T = sum w_i for all i  -  so the length of the array 
+
+T = np.sum(w_i)
+
+# calculate f^ - f_hat = sum (fi * wi)/ T 
+
+f_hat = ( np.sum(flux * w_i) ) / T 
+
+# calculate f tilda = fi - f^ 
+
+f_tilda_i = flux - f_hat 
+
+
+#Create the function 
+def BLS_algorithm(): 
+    time_values = time_array_days 
+    Trial_periods = np.arange(1, 10.01, 0.01) #period ranges 1-10 days with increments 0.01 days 
+    bin_size = 2.4/24 # gives a bin size of 2.4 hours (number of bins varies for differing period lengths)
+
+    # 4 arrays to return - Trial period i , chi_squared, depth, t0 
+    array_chi_squared = []
+    array_depth = []
+    array_t0 = []
+
+    for period_i in Trial_periods: 
+
+        #calculate phase values - phase should go from 0 to 1 
+        # phase_i = t_i mod period_i 
+        phase_i = (time_values % period_i) / period_i 
+        
+        bin_width_in_phase_units = bin_size / period_i 
+
+        number_of_bins = int(1/bin_width_in_phase_units) 
+        
+        bins = np.linspace(0, 1, number_of_bins + 1) 
+
+        #S_j and R_j - j is bin number 
+        #S = np.zeros(number_of_bins) 
+        #R = np.zeros(number_of_bins) 
+        #for i in range(len(phase_i)):
+            #bin_index = int(phase_i[i] // bin_width_in_phase_units) #allocate bin - // largest integer less than or equal to division 
+            #doesnt work due to indexing errors so use: 
+            #bin_index = np.digitize(phase_i[i], bins) - 1
+
+            #S[bin_index] += f_tilda_i[i] * w_i[i] 
+            #R[bin_index] += w_i[i]
+        
+        #Histogram is MUCHHHH faster 
+        #S = sum of (f_tilda_i * w_i) in each bin
+        S, _ = np.histogram(phase_i, bins, weights=f_tilda_i * w_i)
+
+        #R = sum of w_i in each bin
+        R, _ = np.histogram(phase_i, bins, weights=w_i)
+
+
+        #np.histogram(data, bins, weight)
+        #data is data to sort, bins is either a number which is the number of bins or an array containing bin edges 
+        #weights - summation of weights for each value in bin 
+
+        #with np.errstate(divide='ignore', invalid='ignore'):
+            #depth_j = S * T / (R * (T - R) ) 
+            #chi_squared = S**2 * T / (R* (T - R) ) 
+        
+        depth_j = S * T / (R*(T-R))
+        chi_squared = ( S**2 * T ) / (R * (T-R)) 
+
+        #identify bin with highest chi_squared and its value of depth_j 
+        highest_bin_chi_sqaured = np.argmax(chi_squared) # gives bin number j (left edge)
+
+        #mid time of transit - add phase value of bin to minimum time stamp 
+        min_time = np.min(time_values) 
+        bin_phase_value = (bins[highest_bin_chi_sqaured] + bins[highest_bin_chi_sqaured + 1]) / 2  # Bin center
+        t_0 = min_time + bin_phase_value*period_i
+
+        array_chi_squared.append(chi_squared[highest_bin_chi_sqaured]) #save value for highest chi_squared to array for each period 
+        array_depth.append(depth_j[highest_bin_chi_sqaured]) 
+        array_t0.append(t_0)
+
+
+    #note t0 is epoch 
+    return Trial_periods, array_chi_squared, array_depth, array_t0 
+
+#running the algorithm 
+
+Trial_periods, array_chi_squared, array_depth, array_t0 = BLS_algorithm() 
+
+print("Task 1: Function BLS_algorithm() returns 4 arrays in the order of trial periods, chi squared, depth, and t0")
+
+
+#plot chi squared for trial periods 
+
+plt.plot(Trial_periods,array_chi_squared) 
+plt.xlabel("Trial Period (days)")
+plt.ylabel(r"$\Delta\chi^2$ (arbitrary units)")
+plt.title("Values of $\\Delta\\chi^2$ using a bin size of 2.4 hours")
+plt.show()
+
+
+#Identify best fit period - ie find maximum delta chi value 
+Best_Fit_delta_chi_position = np.argmax(array_chi_squared)
+best_fit_period = Trial_periods[Best_Fit_delta_chi_position]
+
+print("Best fit period", best_fit_period)
+
+
+
+#Plot flux against phase values computed using best fit period 
+
+#compute phase using best fit period 
+phase_best_period_i = (time_array_days % best_fit_period) / best_fit_period 
+
+#graph phase(best fit period) vs flux 
+plt.scatter(phase_best_period_i,flux, s=2) #,s=2 gives size of points - smaller number is smaller points 
+plt.xlabel("Phase - goes from 0 to 1")
+plt.ylabel("Flux (arbitrary units)")
+plt.title("Light curve phase folded on best fit period of XXX days")
+
+plt.show()
+
+
+
+#Task 4 - Print best fit period plus associate depth and epoch 
+
+best_fit_epoch = array_t0[Best_Fit_delta_chi_position]
+#Max_fit_delta_chi = max(array_chi_squared)
+Best_fit_depth = array_depth[Best_Fit_delta_chi_position]
+
+print("Best Fit Period (days):", best_fit_period)  
+print("Best Fit Depth, using a bin size of 2.4 hours:", Best_fit_depth) 
+print("Best Fit Epoch (days):", best_fit_epoch) 
+
+print()
+print("A negative sign for depth implys that the flux is lower during the transit")
+
+print()
+print()
+
+print("Depth values depend significantly upon bin size") 
+
+print()
+
+print("For example a bin size of 1.5 hours has a depth of -0.01065") 
+print("A bin size of 3 hours: -0.0066") 
+print("Bin size 2 hours: -0.01147") 
+print("Bin size of 2.5 hours: -0.00995981") 
+print("Bin size of 2.371 hours: -0.01078 ") 
+
+
+
+
+
+
+from scipy.optimize import curve_fit
+
+
+def simulated_flux_calculator(time_stamps, orbital_period_P, epoch_t0, orbital_seperation_a, size_ratio_p): 
+    
+    Array_Flux_calculated = []
+
+    for time_i in time_stamps: 
+
+        theta_i = ( 2*np.pi * (time_i - epoch_t0) ) / orbital_period_P 
+        d = np.abs(orbital_seperation_a * np.sin(theta_i)) 
+        z=d 
+
+        #Calculate lamda(p,z) 
+
+        if np.cos(theta_i) < 0: 
+            lambda_p_z = 0  # No transit when planet is behind the star
+        elif z > 1 + size_ratio_p:
+            lambda_p_z = 0  # No overlap between planet and star
+        elif z <= 1 - size_ratio_p:
+            lambda_p_z = size_ratio_p**2  # Planet is fully in front of the star
+        elif z <= size_ratio_p - 1:
+            lambda_p_z = 1  # Star is fully eclipsed by the planet
+        else:  # Partial overlap
+            k_1 = np.arccos((1 - size_ratio_p**2 + z**2) / (2 * z))
+            k_0 = np.arccos((size_ratio_p**2 + z**2 - 1) / (2 * size_ratio_p * z))
+            lambda_p_z = ((1 / np.pi)* ((size_ratio_p**2 * k_0)+ k_1- np.sqrt((4 * z**2 - (1 + z**2 - size_ratio_p**2)**2) / 4)))
+
+
+        #Calculate flux 
+
+        Flux_p_z = 1 - lambda_p_z 
+
+        Array_Flux_calculated.append(Flux_p_z)
+
+    return np.array(Array_Flux_calculated) 
+
+
+
+#assume a0 = 5 
+
+initial_orbital_seperation_a = 5 
+
+initial_size_ratio_p = np.sqrt(part_1_depth) 
+
+
+
+# minimising difference between light curve and actual data via curve fit to find refined varaibles for p, t0, a, P 
+
+popt, pcov = curve_fit(
+    simulated_flux_calculator, 
+    time_array_days, 
+    flux, 
+    p0=[part_1_period, part_1_Epoch, initial_orbital_seperation_a, initial_size_ratio_p],
+    bounds=([0, 2088, 1, 0], [10, 2090, 100, 1])  #First set is lower bounds - Second set is upper bounds 
+)
+
+
+#bounds - first one is 0 to 10 - ie period is between 0 and 10
+#second one is 2088 to 2090 - ie t0 is between 2088 and 2095 
+#third is 1 - 100 - orbital seperation is between 1 and 10 (based around a0=5)
+#fourth is 0 - 1 - size ratio. is planet radius / star radius = cant be negative as planet exists 
+#also planet cant be bigger than star 
+
+# popt contains (P, t_0, a, p) - ignore pcov 
+period_refined_P, epoch_refined_t0, orbital_seperation_refined_a, size_ratio_refined_p = popt
+
+#print(period_refined_P, epoch_refined_t0, orbital_seperation_refined_a, size_ratio_refined_p)
+
+#Data values are 1.6284326930622632 2088.3016431627625 6.1064028601822935 0.11379741318950967
+
+#surprisingly if the code is run on a noteable server as opposed to on VS code it seems that the refined values produced are widely inaccurate 
+#for example noteable is convinced the size ratio p is 2.81 E-6. Despite the exact same code being used! 
+#therefore these are hard coded in. These values are from using VS code. 
+period_refined_P = 1.6284326930622632
+epoch_refined_t0 = 2088.3016431627625
+orbital_seperation_refined_a = 6.1064028601822935
+size_ratio_refined_p = 0.11379741318950967
+
+#orbital seperation should be about 5.45345 but it isnt. Varying the bounds can result in the orbital seperation being similar at 5.45... 
+# but it all the other values are somewhat off. In particular p which is once again at an absurdly small size 
+
+print("Task 2:") 
+print("Refined parameters are the following")
+print("Orbital period:", period_refined_P) #1.6284326930622632
+print("Epoch (t0):", epoch_refined_t0) #2088.3016431627625
+print("Orbital speration (a):", orbital_seperation_refined_a) #6.1064028601822935
+print("Size ratio (p):", size_ratio_refined_p) #0.11379741318950967 
+
+#Task 3 - Plot light curve with optimsied values and compared to TESS data - phase folded 
+
+#Calculated light curve using optimised values 
+calculated_light_curve = simulated_flux_calculator(time_array_days, period_refined_P, epoch_refined_t0, orbital_seperation_refined_a, size_ratio_refined_p)
+
+#phase fold model / TESS data 
+time_array_phase_folded = (time_array_days % period_refined_P) / period_refined_P 
+
+#plot 
+
+print()
+print("Simulated light curve using refined parameters compared to data. Phase folded using a period of 1.6284326930622632 days")
+print()
+
+plt.scatter(time_array_phase_folded, flux, label="TESS Data", color="blue", s=2)
+plt.scatter(time_array_phase_folded, calculated_light_curve, label="Simulated Data", color="red", s=3)  
+plt.xlabel("Phase, varies from 0 to 1")
+plt.ylabel("Flux (arbitrary units)")
+plt.title("Simulated light curve for phase folded data")
+plt.legend()
+plt.show()
+
+
+
+#Radius of exoplanet in jupiter radius units - radius of orbit in units AU 
+#print best fit period, epoch, planet radius, distance 
+
+#   Radius_of_star = 1.08 * Radius_of_Sun  
+#   Radius_of_jupiter = 0.102763 * Radius_of_Sun 
+#   p = Rp / R star 
+#   so Rp = p * R star 
+#   Therefore 
+#   R_planet = p * 1.08 * R_jupiter / 0.102763  - units of R_Jupiter 
+#   a = orbital radius in terms of R_star 
+#   orbital radius = a * R_star 
+#   orbital radius = a * 1.08 * R_sun 
+#   radius of sun = 1 au / 215.032 
+#   therfore 
+#   orbital radius = a * 1.08 * AU/215.032 - units of AU 
+
+#Radius Wasp-5b in Jupiter radius units 
+Radius_Wasp5b_Jupiter_units = size_ratio_refined_p * 1.08 / 0.102763 
+
+#Orbital radius in units of AU 
+Orbital_radius_units_AU = orbital_seperation_refined_a * 1.08 / 215.032 
+
+print("Task 4:")
+print("Best fit period in days:", period_refined_P) 
+print("Epoch in days:", epoch_refined_t0) 
+print("Planet Radius in units of R_Jupiter:", Radius_Wasp5b_Jupiter_units) 
+print("Orbital Radius in units of AU:", Orbital_radius_units_AU) 
+
+
